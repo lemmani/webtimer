@@ -1,0 +1,4 @@
+# _config.yml
+title: Multiple Timers App
+theme: minima
+description: A simple web app with multiple timers and alerts.
