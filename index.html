@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiple Timers App</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .card {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        }
+        .button {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .button-primary {
+            background-color: #2563eb;
+            color: white;
+        }
+        .button-primary:hover {
+            background-color: #1d4ed8;
+        }
+        .button-outline {
+            border: 1px solid #e5e7eb;
+            background-color: transparent;
+        }
+        .button-outline:hover {
+            background-color: #f3f4f6;
+        }
+        .button-destructive {
+            background-color: #dc2626;
+            color: white;
+        }
+        .button-destructive:hover {
+            background-color: #b91c1c;
+        }
+        .input {
+            padding: 0.5rem 1rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.375rem;
+            width: 100%;
+        }
+        .alert {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            background-color: #fef2f2;
+            border: 1px solid #fee2e2;
+            color: #dc2626;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="p-4 max-w-md mx-auto">
+        <div class="mb-4 flex gap-2">
+            <input type="text" id="newTimerId" placeholder="Enter order number" class="input flex-grow">
+            <button onclick="addTimer()" class="button button-primary">Add Timer</button>
+        </div>
+        
+        <div class="mb-4 flex gap-2" id="controlButtons">
+            <button onclick="testSound()" class="button button-outline">
+                <i class="fas fa-volume-up mr-2"></i>Test Sound
+            </button>
+        </div>
+
+        <div id="notificationPermission" class="mb-4 hidden">
+            <button onclick="requestNotificationPermission()" class="button button-primary w-full">
+                <i class="fas fa-bell mr-2"></i>Enable Notifications
+            </button>
+        </div>
+
+        <div id="timerContainer" class="space-y-4">
+            <!-- Timers will be added here -->
+        </div>
+    </div>
+
+    <div id="alertContainer"></div>
+
+    <script>
+        let timers = [];
+        let audioContext = null;
+        let isSoundEnabled = true;
+
+        // Check notification permission on load
+        document.addEventListener('DOMContentLoaded', function() {
+            if ("Notification" in window) {
+                if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+                    document.getElementById('notificationPermission').classList.remove('hidden');
+                }
+            }
+        });
+
+        function requestNotificationPermission() {
+            if ("Notification" in window) {
+                Notification.requestPermission().then(function(permission) {
+                    if (permission === "granted") {
+                        document.getElementById('notificationPermission').classList.add('hidden');
+                    }
+                });
+            }
+        }
+
+        function sendNotification(message) {
+            if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("Timer Complete", {
+                    body: message,
+                    icon: "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/svg/23f0.svg"
+                });
+            }
+        }
+
+        function initAudioContext() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function showAlert(message) {
+            const alertContainer = document.getElementById('alertContainer');
+            const alertElement = document.createElement('div');
+            alertElement.className = 'alert';
+            alertElement.innerHTML = `
+                <i class="fas fa-exclamation-circle mr-2"></i>
+                ${message}
+            `;
+            alertContainer.appendChild(alertElement);
+
+            setTimeout(() => {
+                alertElement.remove();
+            }, 5000);
+
+            // Send system notification
+            sendNotification(message);
+        }
+
+        function playAlarm() {
+            if (!isSoundEnabled || !audioContext) return;
+            
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioContext.currentTime);
+
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+
+            [0, 0.25, 0.5].forEach(delay => {
+                gainNode.gain.linearRampToValueAtTime(0.7, audioContext.currentTime + delay);
+                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + delay + 0.15);
+            });
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.75);
+        }
+
+        function formatTime(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+
+        function addTimer() {
+            initAudioContext();
+            const input = document.getElementById('newTimerId');
+            const timerId = input.value.trim();
+            
+            if (timerId) {
+                timers.push({
+                    id: timerId,
+                    timeLeft: 15 * 60,
+                    isRunning: true
+                });
+                input.value = '';
+                updateTimerDisplay();
+                updateControlButtons();
+            }
+        }
+
+        function toggleTimer(index) {
+            initAudioContext();
+            timers[index].isRunning = !timers[index].isRunning;
+            updateTimerDisplay();
+        }
+
+        function restartTimer(index) {
+            initAudioContext();
+            timers[index].timeLeft = 15 * 60;
+            timers[index].isRunning = true;
+            updateTimerDisplay();
+        }
+
+        function resetAllTimers() {
+            initAudioContext();
+            timers = timers.map(timer => ({
+                ...timer,
+                timeLeft: 15 * 60,
+                isRunning: true
+            }));
+            updateTimerDisplay();
+        }
+
+        function testSound() {
+            initAudioContext();
+            playAlarm();
+            showAlert("Test alert: Send a message to TEST");
+        }
+
+        function toggleSound() {
+            initAudioContext();
+            isSoundEnabled = !isSoundEnabled;
+            updateControlButtons();
+        }
+
+        function updateControlButtons() {
+            const controlButtons = document.getElementById('controlButtons');
+            controlButtons.innerHTML = `
+                ${timers.length > 0 ? `
+                    <button onclick="resetAllTimers()" class="button button-primary flex-grow">
+                        <i class="fas fa-sync-alt mr-2"></i>Reset All Timers
+                    </button>
+                ` : ''}
+                <button onclick="toggleSound()" class="button button-outline px-3">
+                    <i class="fas ${isSoundEnabled ? 'fa-volume-up' : 'fa-volume-mute'}"></i>
+                </button>
+                <button onclick="testSound()" class="button button-outline">
+                    Test Sound
+                </button>
+            `;
+        }
+
+        function updateTimerDisplay() {
+            const container = document.getElementById('timerContainer');
+            container.innerHTML = timers.map((timer, index) => `
+                <div class="card p-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <i class="fas fa-clock mr-2"></i>
+                            <span class="font-semibold">${timer.id}</span>
+                        </div>
+                        <span class="text-lg font-mono">${formatTime(timer.timeLeft)}</span>
+                    </div>
+                    <div class="mt-2 flex justify-end gap-2">
+                        <button onclick="toggleTimer(${index})" 
+                            class="button ${timer.isRunning ? 'button-destructive' : 'button-primary'}">
+                            <i class="fas ${timer.isRunning ? 'fa-pause' : 'fa-play'} mr-2"></i>
+                            ${timer.isRunning ? 'Pause' : 'Resume'}
+                        </button>
+                        <button onclick="restartTimer(${index})" class="button button-outline">
+                            <i class="fas fa-redo mr-2"></i>Restart
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        setInterval(() => {
+            let shouldUpdate = false;
+            timers = timers.map(timer => {
+                if (timer.isRunning && timer.timeLeft > 0) {
+                    if (timer.timeLeft === 1) {
+                        playAlarm();
+                        showAlert(`Send a message to ${timer.id}`);
+                    }
+                    shouldUpdate = true;
+                    return { ...timer, timeLeft: timer.timeLeft - 1 };
+                }
+                return timer;
+            });
+            if (shouldUpdate) {
+                updateTimerDisplay();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
